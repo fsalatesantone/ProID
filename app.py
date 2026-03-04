@@ -38,16 +38,16 @@ FIELD_HELP = {
     "Responsabile del Progetto": "Referente interno con responsabilità del progetto (valori presi da 'team.xlsx').",
     "Gruppo di Lavoro": "Seleziona uno o più membri del team (valori presi da 'team.xlsx').",
     
-    "Fonti Dati utilizzate": "Fonti dati utilizzate (uno o più) (valori presi da 'fonti_dati.xlsx').",
+    "Fonti Dati utilizzate": "Fonti dati utilizzate (una o più) per l'analisi (valori presi da 'fonti_dati.xlsx').",
     "Dettaglio Temporale dei dati": "Granularità temporale dei dati (valori presi da 'dettaglio_temporale.xlsx').",
-    "Anni di Riferimento": "Anno o intervallo di riferimento dell’analisi (es. 2024 oppure 2023–2025).",
-    "Strumenti di analisi utilizzati": "Strumenti software utilizzati (facoltativo) (valori presi da 'strumenti.xlsx').",
-    "Livello Territoriale dei dati": "Uno o più livelli territoriali (valori presi da 'livello_territoriale.xlsx').",
-    "Perimetro Territoriale": "Elenco sintetico dei territori coperti (testo libero).",
-    
-    "Tipo di Output": "Output prodotti (uno o più) (valori presi da 'output.xlsx').",
+    "Anni di Riferimento": "Anno o intervallo di riferimento dell'analisi.",
+    "Strumenti di analisi utilizzati": "Strumenti e software utilizzati per l'analisi (valori presi da 'strumenti.xlsx').",
+    "Livello Territoriale dei dati": "Uno o più livelli territoriali. In caso di presenza più livelli gerarchici (es. Comune, Provincia, Regione) si può scegliere di riportare quello di maggior dettaglio (valori presi da 'livello_territoriale.xlsx').",
+    "Perimetro Territoriale": "Elenco sintetico dei territori coperti. Da compilare solo in caso di analisi su dati di una particolare area geografica (es. solo le province dell'Emilia-Romagna).",
+
+    "Tipo di Output": "Tipo di output prodotti (uno o più) considerando i file di delivery del Progetto (valori presi da 'output.xlsx').",
     "Dominio del Progetto": "Ambito tematico principale (valori presi da 'dominio.xlsx').",
-    "Parole Chiave": "Lista di Keywords (inserisci una keyword per riga come testo libero). E' importante compilare correttamente questo campo per aumentare la capacità di estrazione da parte dell'Agente AI",
+    "Parole Chiave": "Lista di Keywords del Progetto. Inserisci le diverse una keyword in uno dei seguenti modi: \n a) una keyword per ogni riga; \n b) separando le parole utilizzando il separatore virgola (,) o punto e virgola (;). E' importante compilare correttamente questo campo per aumentare la capacità di ricerca dell'Agente AI",
 }
 
 
@@ -119,16 +119,12 @@ def build_markdown(metadata: Dict) -> str:
         else:
             lines.append(f"{k}: {yaml_escape(str(v))}")
     lines.append("---\n")
-    lines.append(f"# {metadata.get('titolo','')}\n")
-    lines.append("## Descrizione\n")
-    lines.append(metadata.get("descrizione", ""))
-    lines.append("\n")
     return "\n".join(lines)
 
 
 def build_docx(metadata: Dict) -> bytes:
     doc = Document()
-    doc.add_heading("ProID – Carta d’identità digitale del progetto", 1)
+    doc.add_heading("ProID – Carta di identità digitale del progetto", 1)
     for k, v in metadata.items():
         p = doc.add_paragraph()
         p.add_run(f"{k}: ").bold = True
@@ -148,7 +144,10 @@ def build_docx(metadata: Dict) -> bytes:
 st.set_page_config(page_title="ProID", page_icon="img/favicon.png", layout="centered")
 st.image("img/logo.png")
 #st.title("ProID – Crea la Carta di Identità Digitale dei Progetti")
-st.caption("Compila i metadati e scarica la scheda in formato Markdown (file .md) e sposta successivamente questo file nella cartella di progetto.")
+st.caption("""Compila i metadati e scarica la scheda in formato *Markdown* (file .md generato automaticamente da questa applicazione) e sposta successivamente questo file nella cartella di progetto.  
+           Una compilazione chiara e completa della carta di identità digitale del progetto migliora significativamente la capacità dell'*assistente AI* di recuperare correttamente le informazioni nel sistema di *Knowledge Sharing*.  
+           Si raccomanda quindi di dedicare qualche minuto alla compilazione dei campi.
+           """)
 
 # LOOKUPS
 lookups = load_all_lookups(LOOKUP_DIR)
@@ -248,9 +247,9 @@ with st.form("proid_form", clear_on_submit=False):
         )
         # Opzione sotto la riga (più leggibile)
         auto_include_resp = st.checkbox(
-            "Includi automaticamente il responsabile nel team",
+            "Includi il responsabile nel team",
             value=True,
-            help="Se attivo, il responsabile viene aggiunto al team se non già selezionato.",
+            help="Se attivo, il responsabile viene aggiunto automaticameente al team se non già selezionato.",
             key="auto_include_resp",
         )
 
@@ -296,7 +295,7 @@ with st.form("proid_form", clear_on_submit=False):
         )
         perimetro = st.text_input(
             "Perimetro Territoriale (opzionale)",
-            placeholder="Tutti i comuni della provincia di Roma; Lombardia e Piemonte; ...",
+            placeholder="Province del Sud; ...",
             help=FIELD_HELP["Perimetro Territoriale"],
             key="perimetro",
         )
@@ -326,7 +325,7 @@ with st.form("proid_form", clear_on_submit=False):
         parole = st.text_area(
             "Parole Chiave",
             height=120,
-            placeholder="Inserisci una keyword per ogni riga",
+            placeholder="Inserisci una keyword per ogni riga oppure utilizza virgola (,) o punto e virgola (;) per separarle",
             help=FIELD_HELP["Parole Chiave"],
             key="parole_chiave",
         )
@@ -343,43 +342,98 @@ with st.form("proid_form", clear_on_submit=False):
 if submitted:
     errors = []
 
-    if not id_progetto.strip():
+    # --- helper per validazioni ---
+    def is_blank_text(x) -> bool:
+        return x is None or str(x).strip() == ""
+
+    def is_empty_list(x) -> bool:
+        return x is None or (isinstance(x, (list, tuple, set)) and len(x) == 0)
+
+    def is_unselected_selectbox(x: str) -> bool:
+        return x is None or str(x).strip() == "" or str(x).strip() == "-- seleziona --"
+
+    # =========================
+    # Campi obbligatori (testo)
+    # =========================
+    if is_blank_text(id_progetto):
         errors.append("L'ID del Progetto è obbligatorio.")
 
-    for field_name, value in [
-        ("Titolo", titolo),
-        ("Descrizione", descrizione),
-        ("Anno di riferimento", anno_riferimento),
-        ("Percorso alla cartella del progetto", root_path),
-    ]:
-        if not str(value).strip():
-            errors.append(f"{field_name} è obbligatorio.")
+    if is_blank_text(titolo):
+        errors.append("Titolo del Progetto è obbligatorio.")
 
-    if not livello_territoriale:
-        errors.append("Livello Territoriale è obbligatorio (seleziona almeno 1 valore).")
-    if not output:
-        errors.append("Tipo di output è obbligatorio (seleziona almeno 1 valore).")
-    if not fonti:
+    if is_blank_text(descrizione):
+        errors.append("Descrizione del Progetto è obbligatoria.")
+
+    if is_blank_text(root_path):
+        errors.append("Percorso alla cartella del progetto è obbligatorio.")
+
+    # =========================
+    # Campi obbligatori (liste)
+    # =========================
+    if is_empty_list(committente):
+        errors.append("Committente/i è obbligatorio (seleziona almeno 1 valore).")
+
+    if is_empty_list(responsabile_progetto):
+        errors.append("Responsabile del Progetto è obbligatorio (seleziona almeno 1 valore).")
+
+    if is_empty_list(fonti):
         errors.append("Fonti dati è obbligatorio (seleziona almeno 1 valore).")
 
+    if is_empty_list(dettaglio_temporale):
+        errors.append("Dettaglio Temporale è obbligatorio (seleziona almeno 1 valore).")
+
+    if is_empty_list(anno_riferimento):
+        errors.append("Anni di Riferimento è obbligatorio (seleziona almeno 1 valore).")
+
+    if is_empty_list(livello_territoriale):
+        errors.append("Livello Territoriale è obbligatorio (seleziona almeno 1 valore).")
+
+    if is_empty_list(output):
+        errors.append("Tipo di Output è obbligatorio (seleziona almeno 1 valore).")
+
+    if is_empty_list(dominio):
+        errors.append("Dominio del Progetto è obbligatorio (seleziona almeno 1 valore).")
+
+    # =========================
+    # Stato (selectbox con placeholder)
+    # =========================
+    if is_unselected_selectbox(stato):
+        errors.append("Stato del Progetto è obbligatorio (seleziona un valore).")
+
+    # =========================
+    # Team (con auto-include responsabile)
+    # =========================
     team_list = list(team) if team else []
     responsabile_list = list(responsabile_progetto) if responsabile_progetto else []
+
     if auto_include_resp:
         for resp in responsabile_list:
             if resp not in team_list:
                 team_list.append(resp)
 
-    if not team_list:
-        errors.append("Gruppo di lavoro è obbligatorio (seleziona almeno 1 membro).")
+    if len(team_list) == 0:
+        errors.append("Gruppo di Lavoro è obbligatorio (seleziona almeno 1 membro).")
 
-    if data_inizio is None or data_fine is None:
-        errors.append("Inserire la data di inizio e fine del progetto progetto.")
-    elif data_fine < data_inizio:
+    # =========================
+    # Date
+    # =========================
+    if data_inizio is None:
+        errors.append("Data di Inizio del Progetto è obbligatoria.")
+    if data_fine is None:
+        errors.append("Data di Fine del Progetto è obbligatoria.")
+    if (data_inizio is not None) and (data_fine is not None) and (data_fine < data_inizio):
         errors.append("La data di fine non può essere precedente alla data di inizio del progetto.")
 
-    parole_list = [x.strip() for x in str(parole).splitlines() if x.strip()]
-    if not parole_list:
-        errors.append("parole_chiave è obbligatorio (inserisci almeno 1 keyword).")
+    # =========================
+    # Parole chiave (1 per riga)
+    # =========================
+    parole_list = [
+        x.strip()
+        for x in re.split(r"[,\n;]+", str(parole))
+        if x.strip()
+    ]
+    if len(parole_list) == 0:
+        errors.append("Parole Chiave è obbligatorio (inserisci almeno 1 keyword).")
 
     if errors:
         st.error("Correggi i seguenti punti:\n- " + "\n- ".join(errors))
