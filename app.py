@@ -164,7 +164,7 @@ with st.form("proid_form", clear_on_submit=False):
     with col1:
         id_progetto = st.text_input(
             "ID Progetto",
-            placeholder="ECON-2025-001",
+            placeholder="22T28STU111_...",
             help=FIELD_HELP["ID Progetto"],
             key="id_progetto",
         )
@@ -177,7 +177,7 @@ with st.form("proid_form", clear_on_submit=False):
 
         root_path = st.text_input(
             "Percorso alla Cartella del Progetto",
-            placeholder="N:/studi_statistici/...",
+            placeholder="N:\Studi\2026\...",
             help=FIELD_HELP["Percorso alla Cartella del Progetto"],
             key="root_path",
         )
