@@ -177,7 +177,7 @@ with st.form("proid_form", clear_on_submit=False):
 
         root_path = st.text_input(
             "Percorso alla Cartella del Progetto",
-            placeholder="N:\Studi\2026\...",
+            placeholder="N:\Studi\...",
             help=FIELD_HELP["Percorso alla Cartella del Progetto"],
             key="root_path",
         )
